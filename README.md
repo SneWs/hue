@@ -8,11 +8,21 @@ The bar widget and the Go command live in this repository. The widget starts `hu
 
 ```sh
 omarchy plugin add https://github.com/SneWs/hue.git --enable
+```
+
+Each push to `main` builds `hue` for Linux x64 and ARM64 and publishes those files on the [latest release](https://github.com/SneWs/hue/releases/tag/latest). A `v*` tag publishes a versioned release instead. Put the matching file on your `PATH` as `hue`:
+
+```sh
+curl -fsSL -o ~/.local/bin/hue https://github.com/SneWs/hue/releases/download/latest/hue-linux-amd64
+chmod +x ~/.local/bin/hue
+```
+
+Use `hue-linux-arm64` on ARM64. You can also build it yourself from the installed checkout. Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
+
+```sh
 cd ~/.config/omarchy/plugins/grenis.hue
 go build -o ~/.local/bin/hue ./cmd/hue
 ```
-
-Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
 
 Opening the panel registers with `hue serve`. Until the binary is on `~/.local/bin/hue`, the lightbulb has nothing to call.
 
