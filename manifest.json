@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "marcus.hue",
+  "name": "Hue",
+  "version": "1.0.0",
+  "author": "Marcus Grenängen",
+  "license": "MIT",
+  "description": "Control Hue lights from the bar: pair a bridge, then browse rooms.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Hue",
+    "description": "Hue rooms, scenes, lights, switches, and sensors.",
+    "category": "Controls",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
