@@ -7,8 +7,8 @@ The bar widget and the Go command live in this repository. The widget starts `hu
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/<you>/hue.git --enable
-cd ~/.config/omarchy/plugins/marcus.hue
+omarchy plugin add https://github.com/SneWs/hue.git --enable
+cd ~/.config/omarchy/plugins/grenis.hue
 go build -o ~/.local/bin/hue ./cmd/hue
 ```
 
@@ -25,13 +25,13 @@ Rooms with lamps show a count and a ›. Click the name to open that room's scen
 ## Configure
 
 ```sh
-omarchy bar move marcus.hue --section right
+omarchy bar move grenis.hue --section right
 ```
 
 ## Remove
 
 ```sh
-omarchy plugin remove marcus.hue
+omarchy plugin remove grenis.hue
 rm -f ~/.local/bin/hue
 ```
 
@@ -39,7 +39,7 @@ rm -f ~/.local/bin/hue
 
 ## This checkout
 
-`~/.config/omarchy/plugins/marcus.hue` is a link to this repository, so the shell loads these files directly. `omarchy plugin remove marcus.hue` removes that link and leaves this folder in place. The shell watcher does not follow the link, so after a QML change run:
+`~/.config/omarchy/plugins/grenis.hue` is a link to this repository, so the shell loads these files directly. `omarchy plugin remove grenis.hue` removes that link and leaves this folder in place. The shell watcher does not follow the link, so after a QML change run:
 
 ```sh
 omarchy-shell shell rescanPlugins

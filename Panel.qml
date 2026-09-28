@@ -7,8 +7,8 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "marcus.hue"
-  ipcTarget: "marcus.hue"
+  moduleName: "grenis.hue"
+  ipcTarget: "grenis.hue"
 
 
 
