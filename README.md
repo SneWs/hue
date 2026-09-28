@@ -35,4 +35,12 @@ omarchy plugin remove marcus.hue
 rm -f ~/.local/bin/hue
 ```
 
-`omarchy plugin remove` deletes the installed checkout. The saved bridge key stays in `~/.config/hue/bridge.json`. Delete that file too if you want to forget the bridge.
+`omarchy plugin remove` deletes an installed git checkout. The saved bridge key stays in `~/.config/hue/bridge.json`. Delete that file too if you want to forget the bridge.
+
+## This checkout
+
+`~/.config/omarchy/plugins/marcus.hue` is a link to this repository, so the shell loads these files directly. `omarchy plugin remove marcus.hue` removes that link and leaves this folder in place. The shell watcher does not follow the link, so after a QML change run:
+
+```sh
+omarchy-shell shell rescanPlugins
+```
