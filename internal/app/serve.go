@@ -117,6 +117,7 @@ type bridgeSession struct {
 	client *hue.Client
 	ip     string
 	user   string
+	bridge string
 }
 
 func (s *bridgeSession) handle(conn net.Conn) {
@@ -245,10 +246,11 @@ func (s *bridgeSession) warm() (*hue.Client, error) {
 	if cfg == nil {
 		return nil, errors.New("not paired with a bridge")
 	}
-	if s.client == nil || s.ip != cfg.IP || s.user != cfg.Username {
-		s.client = hue.NewWarmClient(cfg.IP, cfg.Username)
+	if s.client == nil || s.ip != cfg.IP || s.user != cfg.Username || s.bridge != cfg.ID {
+		s.client = hue.NewClient(cfg.IP, cfg.Username, cfg.ID)
 		s.ip = cfg.IP
 		s.user = cfg.Username
+		s.bridge = cfg.ID
 	}
 	return s.client, nil
 }

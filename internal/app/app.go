@@ -36,7 +36,7 @@ func Snapshot(ctx context.Context) (hue.Snapshot, error) {
 	if cfg == nil {
 		return hue.UnpairedSnapshot(hue.Discover(ctx), ""), nil
 	}
-	return snapshotWith(ctx, hue.NewClient(cfg.IP, cfg.Username), cfg)
+	return snapshotWith(ctx, hue.NewClient(cfg.IP, cfg.Username, cfg.ID), cfg)
 }
 
 func snapshotWith(ctx context.Context, client *hue.Client, cfg *config.Bridge) (hue.Snapshot, error) {
@@ -82,7 +82,7 @@ func Pair(ctx context.Context, ip, id, name string, wait time.Duration) (Result,
 	if wait <= 0 {
 		wait = 30 * time.Second
 	}
-	client := hue.NewClient(ip, "")
+	client := hue.NewClient(ip, "", id)
 	deadline := time.Now().Add(wait)
 	var username, clientKey string
 	var err error
@@ -106,7 +106,9 @@ func Pair(ctx context.Context, ip, id, name string, wait time.Duration) (Result,
 		}
 	}
 	client.Username = username
-	if id == "" {
+	if confirmed := client.Identity(); confirmed != "" {
+		id = confirmed
+	} else if id == "" {
 		if got, err := client.BridgeID(ctx); err == nil {
 			id = got
 		}
@@ -150,7 +152,7 @@ func Set(ctx context.Context, kind, id string, patch Patch) (Result, error) {
 	if cfg == nil {
 		return Result{}, errors.New("not paired with a bridge")
 	}
-	client := hue.NewClient(cfg.IP, cfg.Username)
+	client := hue.NewClient(cfg.IP, cfg.Username, cfg.ID)
 	if err := apply(ctx, client, kind, id, patch); err != nil && unreachable(err) {
 		if relocated, ok := relocate(ctx, cfg); ok {
 			client = relocated
@@ -185,7 +187,7 @@ func Activate(ctx context.Context, kind, id string) (Result, error) {
 	if cfg == nil {
 		return Result{}, errors.New("not paired with a bridge")
 	}
-	client := hue.NewClient(cfg.IP, cfg.Username)
+	client := hue.NewClient(cfg.IP, cfg.Username, cfg.ID)
 	body := map[string]any{"recall": map[string]any{"action": action}}
 	err = client.Put(ctx, kind, id, body)
 	if err != nil && unreachable(err) {
@@ -239,7 +241,7 @@ func relocate(ctx context.Context, cfg *config.Bridge) (*hue.Client, bool) {
 		}
 		cfg.IP = found.IP
 		_ = config.Save(*cfg)
-		return hue.NewClient(cfg.IP, cfg.Username), true
+		return hue.NewClient(cfg.IP, cfg.Username, cfg.ID), true
 	}
 	return nil, false
 }

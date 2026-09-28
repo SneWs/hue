@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,26 +24,49 @@ var ErrLinkButton = errors.New("link button not pressed")
 // ErrUnauthorized means the stored application key was rejected.
 var ErrUnauthorized = errors.New("application key rejected")
 
-// Client talks to one bridge. The bridge certificate is self-signed and
-// changes with the bridge identity, so verification is skipped for this
-// local device only. HTTP/2 is disabled because Hue bridges misbehave with it.
+// Client talks to one bridge. The handshake verifies the certificate against
+// Signify's Hue Bridge CA and requires the subject to be this bridge's id
+// before any request, including the application key, is sent. HTTP/2 is
+// disabled because Hue bridges misbehave with it.
 type Client struct {
 	IP       string
 	Username string
-	http     *http.Client
+	bridgeID string
+
+	mu     sync.Mutex
+	seenID string
+	http   *http.Client
 }
 
-// warmTransport is shared by the long-lived hue serve process so commands
-// reuse one TLS session. A Hue Bridge handshake is most of the delay of a
-// one-shot command.
-var warmTransport = newTransport()
+// NewClient returns a client for a bridge address, which may include a port.
+// bridgeID is the id from discovery or from the saved config. It may be empty
+// only while pairing by address; the certificate subject then supplies it.
+func NewClient(ip, username, bridgeID string) *Client {
+	c := &Client{
+		IP:       ip,
+		Username: username,
+		bridgeID: normalizeBridgeID(bridgeID),
+	}
+	c.http = &http.Client{
+		Timeout:   6 * time.Second,
+		Transport: c.transport(),
+	}
+	return c
+}
 
-func newTransport() *http.Transport {
+// Identity is the bridge id confirmed by the certificate on the last handshake.
+func (c *Client) Identity() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seenID != "" {
+		return c.seenID
+	}
+	return c.bridgeID
+}
+
+func (c *Client) transport() *http.Transport {
 	return &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // local Hue Bridge presents a self-signed certificate
-			MinVersion:         tls.VersionTLS12,
-		},
+		TLSClientConfig:       c.tlsConfig(),
 		ForceAttemptHTTP2:     false,
 		TLSNextProto:          map[string]func(string, *tls.Conn) http.RoundTripper{},
 		DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
@@ -52,23 +77,24 @@ func newTransport() *http.Transport {
 	}
 }
 
-// NewClient returns a client for a bridge address, which may include a port.
-func NewClient(ip, username string) *Client {
-	return newClient(ip, username, newTransport())
-}
-
-// NewWarmClient returns a client that reuses the process-wide connection pool.
-func NewWarmClient(ip, username string) *Client {
-	return newClient(ip, username, warmTransport)
-}
-
-func newClient(ip, username string, transport *http.Transport) *Client {
-	return &Client{
-		IP:       ip,
-		Username: username,
-		http: &http.Client{
-			Timeout:   6 * time.Second,
-			Transport: transport,
+func (c *Client) tlsConfig() *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		// Hue certificates identify the bridge in the Common Name and do not
+		// carry a subject alternative name, so Go's default hostname check
+		// cannot accept them. This flag disables only that default check.
+		// VerifyPeerCertificate performs the CA and bridge-id checks and
+		// aborts the handshake before the application key is sent.
+		InsecureSkipVerify: true,
+		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
+			id, err := verifyBridgeCertificate(raw, c.bridgeID)
+			if err != nil {
+				return err
+			}
+			c.mu.Lock()
+			c.seenID = id
+			c.mu.Unlock()
+			return nil
 		},
 	}
 }
