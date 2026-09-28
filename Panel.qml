@@ -55,6 +55,9 @@ Panel {
   property string openRoomId: ""
   property int commandEpoch: 0
   property int inflightSnapshotEpoch: 0
+  property bool arranging: false
+  property var roomOrder: []
+  property var lightOrder: ({})
 
   readonly property bool paired: !!(model && model.paired)
   readonly property var groups: (model && model.groups) ? model.groups : []
@@ -117,6 +120,96 @@ Panel {
   function showRoom(id) {
     root.openRoomId = id
     scroller.contentY = 0
+  }
+
+  function applyOrder(items, order) {
+    var byId = {}
+    var used = {}
+    var out = []
+    var list = items || []
+    var saved = order || []
+    for (var i = 0; i < list.length; i++) byId[list[i].id] = list[i]
+    for (var j = 0; j < saved.length; j++) {
+      var item = byId[saved[j]]
+      if (item && !used[item.id]) {
+        out.push(item)
+        used[item.id] = true
+      }
+    }
+    for (var k = 0; k < list.length; k++) {
+      if (!used[list[k].id]) out.push(list[k])
+    }
+    return out
+  }
+
+  function orderedGroups() {
+    var touch = root.revision
+    if (touch < 0) return []
+    return root.applyOrder(root.groups || [], root.roomOrder || [])
+  }
+
+  function orderedLights(room) {
+    var touch = root.revision
+    if (!room || touch < 0) return []
+    var saved = root.lightOrder && root.lightOrder[room.id]
+    return root.applyOrder(room.lights || [], saved || [])
+  }
+
+  function swapIds(ids, id, direction) {
+    var idx = ids.indexOf(id)
+    var next = idx + direction
+    if (idx < 0 || next < 0 || next >= ids.length) return null
+    var swapped = ids.slice()
+    var tmp = swapped[idx]
+    swapped[idx] = swapped[next]
+    swapped[next] = tmp
+    return swapped
+  }
+
+  function moveRoom(id, direction) {
+    var rooms = root.orderedGroups()
+    var ids = []
+    for (var i = 0; i < rooms.length; i++) ids.push(rooms[i].id)
+    var swapped = root.swapIds(ids, id, direction)
+    if (!swapped) return
+    root.roomOrder = swapped
+    root.revision += 1
+    root.saveOrder()
+  }
+
+  function moveLight(room, id, direction) {
+    if (!room) return
+    var lights = root.orderedLights(room)
+    var ids = []
+    for (var i = 0; i < lights.length; i++) ids.push(lights[i].id)
+    var swapped = root.swapIds(ids, id, direction)
+    if (!swapped) return
+    var next = {}
+    var current = root.lightOrder || {}
+    for (var key in current) next[key] = current[key]
+    next[room.id] = swapped
+    root.lightOrder = next
+    root.revision += 1
+    root.saveOrder()
+  }
+
+  function readOrder(text) {
+    var parsed = {}
+    try {
+      parsed = JSON.parse(String(text || "")) || {}
+    } catch (e) {
+      return
+    }
+    root.roomOrder = parsed.roomOrder || []
+    root.lightOrder = parsed.lightOrder || {}
+    root.revision += 1
+  }
+
+  function saveOrder() {
+    orderFile.setText(JSON.stringify({
+      roomOrder: root.roomOrder || [],
+      lightOrder: root.lightOrder || {}
+    }, null, 2) + "\n")
   }
 
   function refresh() {
@@ -290,7 +383,18 @@ Panel {
   // One snapshot at startup so a paired bridge lights the icon. After that,
   // poll only while the panel is open or a bridge is paired. An unpaired
   // closed panel has nothing to refresh.
-  Component.onCompleted: root.refresh()
+  Component.onCompleted: {
+    Quickshell.execDetached(["mkdir", "-p", orderFile.path.replace(/\/[^/]*$/, "")])
+    root.refresh()
+  }
+
+  FileView {
+    id: orderFile
+    path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/hue/order.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.readOrder(text())
+  }
   Timer {
     interval: root.opened ? 8000 : 20000
     repeat: true
@@ -418,7 +522,7 @@ Panel {
               font.pixelSize: Style.font.display
             }
           }
-          trailingControl: root.paired ? forgetControl : null
+          trailingControl: root.paired ? headerControl : null
         }
 
         Text {
@@ -562,7 +666,7 @@ Panel {
             spacing: Style.space(16)
 
             Repeater {
-              model: root.openRoomId === "" ? root.groups : []
+              model: root.openRoomId === "" ? root.orderedGroups() : []
               delegate: RoomRow {
                 width: roomColumn.width
               }
@@ -600,9 +704,23 @@ Panel {
     onClicked: root.forget()
   }
 
-  Component {
-    id: forgetControl
+  component HeaderActions: Row {
+    spacing: Style.space(4)
+
+    PanelActionButton {
+      iconText: "⚙"
+      tooltipText: root.arranging ? "Done" : "Reorder rooms and lights"
+      foreground: root.arranging ? Color.accent : root.uiFg
+      fontFamily: root.uiFont
+      onClicked: root.arranging = !root.arranging
+    }
+
     ForgetButton {}
+  }
+
+  Component {
+    id: headerControl
+    HeaderActions {}
   }
 
   component RoomRow: Item {
@@ -632,7 +750,7 @@ Panel {
 
       Column {
         id: nameCol
-        width: parent.width - (roomPower.visible ? roomPower.implicitWidth + parent.spacing : 0)
+        width: Math.max(0, parent.width - roomTrailing.width - parent.spacing)
         spacing: Style.space(2)
 
         Text {
@@ -658,12 +776,39 @@ Panel {
         }
       }
 
-      ToggleSwitch {
-        id: roomPower
-        visible: !!modelData.controlId
-        checked: root.shown(modelData.controlId, "on", modelData.on === true)
-        foreground: root.uiFg
-        onToggled: root.toggleRoom(modelData, !root.shown(modelData.controlId, "on", modelData.on === true))
+      Row {
+        id: roomTrailing
+        spacing: Style.space(4)
+
+        PanelActionButton {
+          id: roomUp
+          visible: root.arranging
+          iconText: "▲"
+          tooltipText: "Move up"
+          foreground: root.uiFg
+          fontFamily: root.uiFont
+          enabled: roomRow.index > 0
+          onClicked: root.moveRoom(modelData.id, -1)
+        }
+
+        PanelActionButton {
+          id: roomDown
+          visible: root.arranging
+          iconText: "▼"
+          tooltipText: "Move down"
+          foreground: root.uiFg
+          fontFamily: root.uiFont
+          enabled: roomRow.index < root.orderedGroups().length - 1
+          onClicked: root.moveRoom(modelData.id, 1)
+        }
+
+        ToggleSwitch {
+          id: roomPower
+          visible: !!modelData.controlId
+          checked: root.shown(modelData.controlId, "on", modelData.on === true)
+          foreground: root.uiFg
+          onToggled: root.toggleRoom(modelData, !root.shown(modelData.controlId, "on", modelData.on === true))
+        }
       }
     }
 
@@ -763,11 +908,36 @@ Panel {
 
       Caption { text: "LIGHTS" }
       Repeater {
-        model: (room && room.lights) ? room.lights : []
+        model: root.orderedLights(room)
         delegate: Column {
           required property var modelData
+          required property int index
           width: parent.width
           spacing: Style.space(8)
+
+          Row {
+            visible: root.arranging
+            spacing: Style.space(4)
+            height: visible ? implicitHeight : 0
+
+            PanelActionButton {
+              iconText: "▲"
+              tooltipText: "Move up"
+              foreground: root.uiFg
+              fontFamily: root.uiFont
+              enabled: index > 0
+              onClicked: root.moveLight(room, modelData.id, -1)
+            }
+
+            PanelActionButton {
+              iconText: "▼"
+              tooltipText: "Move down"
+              foreground: root.uiFg
+              fontFamily: root.uiFont
+              enabled: index < root.orderedLights(room).length - 1
+              onClicked: root.moveLight(room, modelData.id, 1)
+            }
+          }
 
           Toggle {
             width: parent.width
