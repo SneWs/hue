@@ -8,30 +8,21 @@ The bar widget and the Go command live in this repository. The widget starts `hu
 
 ## Install
 
+Manual setup. `omarchy plugin add` installs the bar widget only. It does not build or download the `hue` executable the panel runs, so the widget does nothing until that command is installed separately.
+
 ```sh
 omarchy plugin add https://github.com/SneWs/hue.git --enable
+sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh
 ```
 
-Build it from the checkout. Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
+`install-hue.sh` is one fail-closed script (`set -eu`). It downloads `SHA256SUMS` from the immutable `v1.0.0` release first, then downloads `hue-linux-amd64` or `hue-linux-arm64` for this machine, checks the binary against that checksum, and runs `install` only after the check succeeds. A failed download or checksum exits before anything is copied to `~/.local/bin/hue`. Do not install the moving `latest` prerelease.
+
+To build from the checkout instead, Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
 
 ```sh
 cd ~/.config/omarchy/plugins/grenis.hue
 go build -o ~/.local/bin/hue ./cmd/hue
 ```
-
-A version tag such as `v1.0.0` also publishes `hue-linux-amd64` and `hue-linux-arm64`. Install one of those only from that immutable tag, and only after the checksum file from the same tag matches. Do not install the moving `latest` prerelease.
-
-```sh
-dir=$(mktemp -d)
-trap 'rm -rf "$dir"' EXIT
-base=https://github.com/SneWs/hue/releases/download/v1.0.0
-curl -fsSL -o "$dir/hue-linux-amd64" "$base/hue-linux-amd64"
-curl -fsSL -o "$dir/SHA256SUMS" "$base/SHA256SUMS"
-( cd "$dir" && sha256sum -c --ignore-missing SHA256SUMS )
-install -m 0755 "$dir/hue-linux-amd64" ~/.local/bin/hue
-```
-
-On ARM64, download `hue-linux-arm64` from that same `v1.0.0` URL and install that file instead. `sha256sum` must succeed before `install` runs. When you move to a newer tag, change `v1.0.0` in both URLs together.
 
 Opening the panel registers with `hue serve`. Until the binary is on `~/.local/bin/hue`, the lightbulb has nothing to call.
 
