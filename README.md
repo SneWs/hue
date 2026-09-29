@@ -15,7 +15,9 @@ omarchy plugin add https://github.com/SneWs/hue.git --enable
 sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh vX.Y.Z
 ```
 
-Replace `vX.Y.Z` with the immutable release you want. `install-hue.sh` is one fail-closed script (`set -eu`) and requires the [GitHub CLI](https://cli.github.com/). It verifies that tag's signed release attestation, downloads `hue-linux-amd64` or `hue-linux-arm64`, checks the downloaded file against the same attestation, and runs `install` only after both checks succeed. A failed verification or download exits before anything is copied to `~/.local/bin/hue`.
+Replace `vX.Y.Z` with the immutable release you want, such as `v1.0.1`. `v1.0.0` is mutable and has no attestation, so the installer refuses it. `install-hue.sh` is one fail-closed script (`set -eu`) and requires the [GitHub CLI](https://cli.github.com/). It verifies that tag's signed release attestation, downloads `hue-linux-amd64` or `hue-linux-arm64`, and checks the downloaded file against the same attestation.
+
+The script installs to `~/.local/bin/hue` only when that path is absent, when the existing file is already the attested release, or when the file is owned by you and its SHA-256 matches `~/.config/hue/installer-identity` from a previous run of this installer. A different executable, a symlink, or a file owned by someone else is left unchanged. A binary produced with `go build -o ~/.local/bin/hue` is one of those other files unless its bytes already match the attested release.
 
 Version tags published while release immutability is enabled on this repository get that attestation. The moving `latest` prerelease and any release without an attestation are refused. `v1.0.0` has no attestation.
 
@@ -52,10 +54,10 @@ omarchy bar move grenis.hue --section right
 
 ```sh
 omarchy plugin remove grenis.hue
-rm -f ~/.local/bin/hue
+rm -f ~/.local/bin/hue ~/.config/hue/installer-identity
 ```
 
-`omarchy plugin remove` deletes an installed git checkout. The saved bridge key stays in `~/.config/hue/bridge.json`. Delete that file too if you want to forget the bridge.
+`omarchy plugin remove` deletes an installed git checkout. The saved bridge key stays in `~/.config/hue/bridge.json`. Delete that file too if you want to forget the bridge. `installer-identity` is the SHA-256 of the `hue` command last written by `install-hue.sh`.
 
 ## This checkout
 
