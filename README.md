@@ -15,7 +15,7 @@ omarchy plugin add https://github.com/SneWs/hue.git --enable
 sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh
 ```
 
-`install-hue.sh` is one fail-closed script (`set -eu`). It downloads `SHA256SUMS` from the immutable `v1.0.0` release first, then downloads `hue-linux-amd64` or `hue-linux-arm64` for this machine, checks the binary against that checksum, and runs `install` only after the check succeeds. A failed download or checksum exits before anything is copied to `~/.local/bin/hue`. Do not install the moving `latest` prerelease.
+`install-hue.sh` is one fail-closed script (`set -eu`). It downloads `hue-linux-amd64` or `hue-linux-arm64` from the `v1.0.0` release, checks that file against the digest pinned in `checksums/v1.0.0.txt` in this repository, and runs `install` only after the check succeeds. A failed download or checksum exits before anything is copied to `~/.local/bin/hue`. Do not install the moving `latest` prerelease.
 
 To build from the checkout instead, Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
 
