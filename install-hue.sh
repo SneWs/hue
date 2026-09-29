@@ -39,7 +39,7 @@ aarch64 | arm64) asset=hue-linux-arm64 ;;
   ;;
 esac
 
-# Mutable releases, including v1.0.0 and the moving latest tag, have no attestation.
+# A mutable release, including the moving latest tag, has no attestation.
 gh release verify "$release" --repo "$repo"
 
 dest="${HOME}/.local/bin/hue"
