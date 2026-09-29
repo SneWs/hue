@@ -1,15 +1,34 @@
 #!/bin/sh
-# Install the hue command from release v1.0.0.
-# The digest is checksums/v1.0.0.txt in this repository, reviewed with the
-# plugin source. The release SHA256SUMS asset is not consulted: that release
-# can be edited, so its checksum can change together with the binary.
-# set -e stops the script on any failure. install runs only after the check.
+# Install hue from an immutable GitHub release chosen by the caller.
+# gh release verify checks that tag's signed attestation. gh release
+# verify-asset checks the downloaded file against that attestation.
+# install runs only after both succeed. set -e stops on any failure.
 set -eu
 
-release=v1.0.0
-base="https://github.com/SneWs/hue/releases/download/${release}"
-root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-sums="${root}/checksums/${release}.txt"
+repo=SneWs/hue
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: install-hue.sh vX.Y.Z" >&2
+  exit 1
+fi
+
+release=$1
+case "$release" in
+*[!A-Za-z0-9._-]*)
+  echo "invalid release tag: ${release}" >&2
+  exit 1
+  ;;
+v[0-9]*.[0-9]*.[0-9]*) ;;
+*)
+  echo "pass an immutable release tag such as v1.2.3" >&2
+  exit 1
+  ;;
+esac
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "GitHub CLI (gh) is required to verify the release attestation" >&2
+  exit 1
+fi
 
 case "$(uname -m)" in
 x86_64 | amd64) asset=hue-linux-amd64 ;;
@@ -20,30 +39,16 @@ aarch64 | arm64) asset=hue-linux-arm64 ;;
   ;;
 esac
 
-if [ ! -f "$sums" ]; then
-  echo "missing reviewed digest file: ${sums}" >&2
-  exit 1
-fi
+# Mutable releases, including v1.0.0 and the moving latest tag, have no attestation.
+gh release verify "$release" --repo "$repo"
 
 dest="${HOME}/.local/bin/hue"
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 
-if ! grep -E "^[0-9a-f]{64}  ${asset}\$" "$sums" > "$dir/SHA256SUMS"; then
-  echo "no reviewed digest for ${asset} in ${sums}" >&2
-  exit 1
-fi
-if [ "$(wc -l < "$dir/SHA256SUMS")" -ne 1 ]; then
-  echo "expected one reviewed digest for ${asset} in ${sums}" >&2
-  exit 1
-fi
+gh release download "$release" --repo "$repo" --pattern "$asset" --dir "$dir"
 
-curl -fsSL -o "$dir/$asset" "$base/$asset"
-
-(
-  cd "$dir"
-  sha256sum -c --strict SHA256SUMS
-)
+gh release verify-asset "$release" "$dir/$asset" --repo "$repo"
 
 mkdir -p "${HOME}/.local/bin"
 install -m 0755 "$dir/$asset" "$dest"

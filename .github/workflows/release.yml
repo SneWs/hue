@@ -43,6 +43,7 @@ jobs:
   publish:
     name: Publish release
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,26 +54,50 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Publish to the release page
+      - name: Publish immutable release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          cd dist
-          sha256sum hue-linux-amd64 hue-linux-arm64 > SHA256SUMS
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "refusing to publish ${tag}; pass a version tag such as v1.2.3" >&2
+              exit 1
+              ;;
+          esac
 
-          args=(--notes "Built from ${GITHUB_SHA}." --target "${GITHUB_SHA}")
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tag="${GITHUB_REF_NAME}"
-            args+=(--title "${GITHUB_REF_NAME}")
-          else
-            tag="latest"
-            args+=(--title "Latest build" --prerelease)
-            gh release delete latest --yes --cleanup-tag || true
+          cd dist
+          # With release immutability enabled, this creates a draft, uploads
+          # the binaries, and publishes. The release is immutable only after publish.
+          gh release create "$tag" \
+            --title "$tag" \
+            --target "${GITHUB_SHA}" \
+            --verify-tag \
+            --notes "Built from ${GITHUB_SHA}." \
+            hue-linux-amd64 \
+            hue-linux-arm64
+
+          immutable=$(gh release view "$tag" --json isImmutable --jq .isImmutable)
+          if [ "$immutable" != "true" ]; then
+            gh release delete "$tag" --yes --cleanup-tag || true
+            echo "refusing ${tag}: GitHub left the release mutable. Enable release immutability, then push the tag again." >&2
+            exit 1
           fi
 
-          gh release create "$tag" "${args[@]}" \
-            hue-linux-amd64 \
-            hue-linux-arm64 \
-            SHA256SUMS
+          ok=0
+          for _ in 1 2 3 4 5 6; do
+            if gh release verify "$tag" \
+              && gh release verify-asset "$tag" hue-linux-amd64 \
+              && gh release verify-asset "$tag" hue-linux-arm64; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "release ${tag} is immutable but its attestation did not verify" >&2
+            exit 1
+          fi

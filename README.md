@@ -12,10 +12,12 @@ Manual setup. `omarchy plugin add` installs the bar widget only. It does not bui
 
 ```sh
 omarchy plugin add https://github.com/SneWs/hue.git --enable
-sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh
+sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh vX.Y.Z
 ```
 
-`install-hue.sh` is one fail-closed script (`set -eu`). It downloads `hue-linux-amd64` or `hue-linux-arm64` from the `v1.0.0` release, checks that file against the digest pinned in `checksums/v1.0.0.txt` in this repository, and runs `install` only after the check succeeds. A failed download or checksum exits before anything is copied to `~/.local/bin/hue`. Do not install the moving `latest` prerelease.
+Replace `vX.Y.Z` with the immutable release you want. `install-hue.sh` is one fail-closed script (`set -eu`) and requires the [GitHub CLI](https://cli.github.com/). It verifies that tag's signed release attestation, downloads `hue-linux-amd64` or `hue-linux-arm64`, checks the downloaded file against the same attestation, and runs `install` only after both checks succeed. A failed verification or download exits before anything is copied to `~/.local/bin/hue`.
+
+Version tags published while release immutability is enabled on this repository get that attestation. The moving `latest` prerelease and any release without an attestation are refused. `v1.0.0` has no attestation.
 
 To build from the checkout instead, Go 1.27 or newer is required. This repo pins 1.27.1 in `mise.toml` for [mise](https://mise.jdx.dev/) users.
 
