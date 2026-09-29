@@ -17,7 +17,7 @@ sh ~/.config/omarchy/plugins/grenis.hue/install-hue.sh vX.Y.Z
 
 Replace `vX.Y.Z` with the immutable release you want, such as `v1.0.1`. `install-hue.sh` is one fail-closed script (`set -eu`) and requires the [GitHub CLI](https://cli.github.com/). It verifies that tag's signed release attestation, downloads `hue-linux-amd64` or `hue-linux-arm64`, and checks the downloaded file against the same attestation.
 
-The script installs to `~/.local/bin/hue` only when that path is absent, when the existing file is already the attested release, or when the file is owned by you and its SHA-256 matches `~/.config/hue/installer-identity` from a previous run of this installer. A different executable, a symlink, or a file owned by someone else is left unchanged. A binary produced with `go build -o ~/.local/bin/hue` is one of those other files unless its bytes already match the attested release.
+The script installs to `~/.local/bin/hue` only when that path is absent, when the existing file is already the attested release, or when the file is owned by you and its SHA-256 matches `~/.config/hue/installer-identity` from a previous run of this installer. A different executable, a symlink, or a file owned by someone else is left unchanged. A binary produced with `go build -o ~/.local/bin/hue` is one of those other files unless its bytes already match the attested release. The attested bytes are first written to an exclusive temporary file in `~/.local/bin`. That file is renamed onto `hue` only if it is still the regular file just created.
 
 Version tags published while release immutability is enabled on this repository get that attestation. The moving `latest` prerelease and any release without an attestation are refused.
 

@@ -48,14 +48,25 @@ stamp="${config_home}/hue/installer-identity"
 dir=$(mktemp -d)
 stamp_tmp=""
 stage=""
+stage_ino=""
 cleanup() {
   rm -rf "$dir"
   if [ -n "$stamp_tmp" ]; then
-    rm -f "$stamp_tmp"
+    rm -f -- "$stamp_tmp"
   fi
+  # Remove the stage only while that directory entry is still the file we created.
+  # A substituted name is left alone.
   if [ -n "$stage" ]; then
-    rm -f "$stage"
+    if [ -n "$stage_ino" ]; then
+      now=$(stat -c '%d:%i' -- "$stage" 2>/dev/null || true)
+      if [ "$now" = "$stage_ino" ]; then
+        rm -f -- "$stage"
+      fi
+    else
+      rm -f -- "$stage"
+    fi
   fi
+  exec 3>&-
 }
 trap cleanup EXIT
 
@@ -113,14 +124,65 @@ if [ -e "$dest" ] || [ -L "$dest" ]; then
 fi
 
 mkdir -p "${HOME}/.local/bin" "${config_home}/hue"
-stage="${dest}.installer-$$"
-install -m 0755 "$dir/$asset" "$stage"
-installed_sum=$(digest "$stage")
+bindir=$(dirname -- "$dest")
+# Exclusive unpredictable name in the destination directory. install(1) on a
+# predictable path would follow a planted symlink and write that target.
+stage=$(mktemp "${bindir}/.hue-installer.XXXXXXXX")
+stage_kind=$(stat -c %F -- "$stage")
+stage_owner=$(stat -c %u -- "$stage")
+stage_ino=$(stat -c '%d:%i' -- "$stage")
+case "$stage_kind" in
+"regular file" | "regular empty file") ;;
+*)
+  echo "refusing to write staged hue binary: ${stage} is not a regular file" >&2
+  exit 1
+  ;;
+esac
+if [ "$stage_owner" != "$(id -u)" ]; then
+  echo "refusing to write staged hue binary: ${stage} is owned by uid ${stage_owner}" >&2
+  exit 1
+fi
+
+exec 3<>"$stage"
+fd_kind=$(stat -L -c %F -- /proc/self/fd/3)
+fd_owner=$(stat -L -c %u -- /proc/self/fd/3)
+fd_ino=$(stat -L -c '%d:%i' -- /proc/self/fd/3)
+case "$fd_kind" in
+"regular file" | "regular empty file") ;;
+*)
+  echo "refusing to write staged hue binary: stage was substituted" >&2
+  exit 1
+  ;;
+esac
+if [ "$fd_owner" != "$(id -u)" ] || [ "$fd_ino" != "$stage_ino" ]; then
+  echo "refusing to write staged hue binary: stage was substituted" >&2
+  exit 1
+fi
+
+dd if="$dir/$asset" of=/proc/self/fd/3 conv=fsync status=none
+installed_sum=$(digest /proc/self/fd/3)
 if [ "$installed_sum" != "$new_sum" ]; then
   echo "staged file digest does not match the attested ${asset}" >&2
   exit 1
 fi
-mv -f "$stage" "$dest"
+chmod 0755 /proc/self/fd/3
+
+now_kind=$(stat -c %F -- "$stage")
+now_owner=$(stat -c %u -- "$stage")
+now_ino=$(stat -c '%d:%i' -- "$stage")
+case "$now_kind" in
+"regular file" | "regular empty file") ;;
+*)
+  echo "refusing to install staged hue binary: stage was substituted" >&2
+  exit 1
+  ;;
+esac
+if [ "$now_owner" != "$(id -u)" ] || [ "$now_ino" != "$fd_ino" ]; then
+  echo "refusing to install staged hue binary: stage was substituted" >&2
+  exit 1
+fi
+exec 3>&-
+mv -T -f -- "$stage" "$dest"
 stage=""
 
 stamp_tmp=$(mktemp "${config_home}/hue/installer-identity.XXXXXX")
